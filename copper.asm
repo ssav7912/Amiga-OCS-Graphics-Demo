@@ -124,6 +124,11 @@ mainloop:
             cmpi.b     #$30,d2
             bhi        bars
 
+            ; test if spritepos = middle. Better way to start/stop?
+            move.w     spritepos,d2
+            cmpi.b     #$64,d2
+            bhs        _noupdate
+
             and.l      #$4-1,d1
             tst.b      d1    
             bne        _noreset
@@ -142,17 +147,15 @@ mainloop:
             ; could probably make faster by incorporating updatesprite into writesprite loop
             ; will look into if causes problems
 _noreset:
-
             move.w     spritepos,d2
             addq.b     #$1,d2
             move.w     d2,spritepos
-
+            
+_noupdate:
             move.l     (a4),a2                      ;currentframe pointer into a2 (tilesetpointer)
-
             jsr        updatesprite                 ; update sprite pos 
             
             move.l     (a4),a2                      ; reset tilecounter
-
             jsr        writesprites                 ;write da sprites
 
 bars:
@@ -440,6 +443,16 @@ _updateloop:
 
             rts
 
+;CONVERTS FROM HSV to RGB Colorspace - transitions.
+;Cut down for only grayscale?
+;pre-compute?
+; PARAMETERS:
+; h
+; s
+; v
+; *r (RED pointer - 8 bits per channel)
+; *g (GREEN pointer)
+; *b (BLUE pointer)
 
 
 
