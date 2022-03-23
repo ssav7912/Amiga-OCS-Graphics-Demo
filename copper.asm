@@ -33,6 +33,8 @@ BACKGROUND EQU $01800022
 GREENEND   EQU $64
 BLUEEND    EQU $96
 
+TITLESTART EQU 500
+TITLEEND   EQU TITLESTART+300
 
 ;------------------------------------------
 ;CODE
@@ -79,8 +81,9 @@ init:
 
         
             move.w     #$1200,BPLCON0               ; Setup 1 bitplane 4 sprites
-            move.w     #$0000,BPL1MOD
             move.w     #$0000,BPLCON1
+            move.w     #$0000,BPL1MOD
+            move.w     #$0000,BPL2MOD
             move.w     #$0024,BPLCON2               ; sprite priority
             move.w     #$0038,DDFSTRT
             move.w     #$00d0,DDFSTOP
@@ -89,7 +92,9 @@ init:
             move.w     #$f4c1,DIWSTOP
             move.w     #$38c1,DIWSTOP               ; PAL 256 Vline screen trick
 
+
             lea.l      currentframe,a4
+            
 
 mainloop:
             move.l     frame,d1
@@ -97,17 +102,106 @@ mainloop:
             move.l     d1,frame
             move.l     #copper,a6
 
-            ; bunk plane
-            move.l     #plane,d0
+
+            cmp.l      #TITLESTART,d1
+            bls        bunk
+            cmp.l      #TITLEEND+300,d1
+            bhi        plane1
+
+            move.l     #title,d0
+            ;Foreground colour palette for titleplane
+            ;list stepping is handled by waitVB
+            move.l     titlepos,d3 
+            lea.l      titletransition,a3
+            ; index addressing mode: a3 + 0 + d3 (An+disp+Rn)
+            ; for some reason can't simply do Rn(An)
+            move.l     0(a3,d3),(a6)+
+            bra        playplane
+        
+; First montage planes
+plane1:
+            move.w     #$4200,BPLCON0
+            ; move.w     #$0077,BPLCON1
+            move.w     #$0078,BPL1MOD
+            move.w     #$0078,BPL2MOD
+            move.b     d1,DIWSTRT
+            move.b     #$c1,d2
+            sub.b      d2,d1
+            move.b     d2,DIWSTOP
+
+            move.l     frame,d1
+            ; move.b     #$ff,d2
+            ; sub.b      d1,d2
+            ; move.b     d2,DDFSTOP
+            ; move.b     d1,BPL1MOD
+            ; move.b     d1,BPL2MOD
+
+
+
+            move.l     #montage_p1,d0
             move.w     #$00e2,(a6)+
             move.w     d0,(a6)+
             swap       d0
             move.w     #$00e0,(a6)+
-            move.w     d0,(a6)+ 
-           
-            ; spritepalette
+            move.w     d0,(a6)+
+
+            move.l     #montage_p1+40,d0
+            move.w     #$00e6,(a6)+
+            move.w     d0,(a6)+
+            swap       d0 
+            move.w     #$00e4,(a6)+
+            move.w     d0,(a6)+
+
+            move.l     #montage_p1+80,d0     
+            move.w     #$00ea,(a6)+
+            move.w     d0,(a6)+
+            swap       d0
+            move.w     #$00e8,(a6)+
+            move.w     d0,(a6)+
+
+            move.l     #montage_p1+120,d0
+            move.w     #$00ee,(a6)+
+            move.w     d0,(a6)+
+            swap       d0
+            move.w     #$00ec,(a6)+
+            move.w     d0,(a6)+
+
+
+
+            move.l     #$01800000,(a6)+
+            move.l     #$01820000,(a6)+
+            move.l     #$01840344,(a6)+
+            move.l     #$01860459,(a6)+
+            move.l     #$01880269,(a6)+
+            move.l     #$018a037a,(a6)+
+            move.l     #$018c0788,(a6)+ ;UP TO HERE - colors swizzled RGB-->BGR
+            move.l     #$018e0b83,(a6)+
+            move.l     #$01900b86,(a6)+
+            move.l     #$01920c95,(a6)+
+            move.l     #$01940bb9,(a6)+
+            move.l     #$01960ccc,(a6)+
+            move.l     #$01980ddc,(a6)+
+            move.l     #$019a0ddd,(a6)+
+            move.l     #$019c0edc,(a6)+
+            move.l     #$019e0eec,(a6)+
+            move.l     #$01a00eed,(a6)+
+
+
+            bra        pushpalettes
+
+
+
+bunk:
+            ; bunk plane
+            move.l     #plane,d0
+
+playplane:
+            jsr        pushplane
+
+pushpalettes:
+            ; spritepalette - in theory shouldn't need all of this
             move.l     #BACKGROUND,(a6)+
-            move.l     #$01a0005a,(a6)+
+            ; move.l     #$01a0005a,(a6)+
             move.l     #$01a2005a,(a6)+
             move.l     #$01a4005a,(a6)+
             move.l     #$01a6005a,(a6)+
@@ -124,10 +218,16 @@ mainloop:
             cmpi.b     #$30,d2
             bhi        bars
 
-            ; test if spritepos = middle. Better way to start/stop?
+            ;tests if sprite should start moving again
+            cmpi.l     #TITLEEND+30,d1
+            bhi        spritemove
+            
+            ; test if spritepos = middle. (64+96/4 bc offset is from back of smudge) Better way to start/stop?
             move.w     spritepos,d2
-            cmpi.b     #$64,d2
+            cmpi.b     #$7c,d2
             bhs        _noupdate
+
+spritemove:
 
             and.l      #$4-1,d1
             tst.b      d1    
@@ -145,18 +245,43 @@ mainloop:
 
             ; sprite routine
             ; could probably make faster by incorporating updatesprite into writesprite loop
+            ; use pre-generated copperlists that we merely update the HPOSword on?
             ; will look into if causes problems
 _noreset:
             move.w     spritepos,d2
+            
+
+            move.l     frame,d1
+            and.l      #$2-1,d1
+            bne        _nomove
+            
+            ;test if at end of screen - if so we need to progressively move back to 0hpos
+            move.b     backflag,d3
+            cmpi.b     #$ff,d3
+            beq        _moveback
+
+
+
             addq.b     #$1,d2
+            bra        _nomove
+
+_moveback:
+            cmpi.b     #$40,d2
+            blo        _nomove
+            subq.b     #$2,d2
+
+_nomove:
             move.w     d2,spritepos
             
 _noupdate:
+
             move.l     (a4),a2                      ;currentframe pointer into a2 (tilesetpointer)
             jsr        updatesprite                 ; update sprite pos 
             
             move.l     (a4),a2                      ; reset tilecounter
             jsr        writesprites                 ;write da sprites
+
+;CopperBar routine
 
 bars:
             move.l     frame,d1
@@ -190,7 +315,9 @@ endbars:
 
             move.l     #$fffffffe,(a6)+
 
-                        
+
+; INPUT CHECKS
+
 mouse:
             btst.b     #6,CIAAPRA
             beq        exit
@@ -225,6 +352,8 @@ _keyboardWait85us:
 
             bclr       #6,$bfee01
 
+;VERTICAL BLANKING
+
 waitVB: 
             move.l     VPOSR,d0                     ; busy loop - how to improve? Look into IRQ
             and.l      #$1ff00,d0
@@ -232,10 +361,67 @@ waitVB:
             bne        waitVB
 
 
+            move.w     spritepos,d2
+            cmpi.b     #$b0,d2
+            bhs        _setbackflag
+            bra        _startbars 
+
+_setbackflag:
+            move.b     #$ff,backflag
+
+_startbars:
+            ;StartBars
             move.l     frame,d1
             cmpi.l     #$64,d1
             blo        cop
+            
 
+            ;test if its time to transition into the titlescreen, or transition out
+            ;could probably be a subroutine.
+            cmpi.l     #TITLEEND,d1
+            bhi        fadeout
+
+            cmpi.l     #TITLESTART,d1
+            bls        _red
+
+            and.l      #16-1,d1
+            tst.b      d1
+            bne        _red
+
+            ;increment foreground colour index. Check if > length of list (16)
+            move.l     titlepos,d3
+            cmpi.b     #$10,d3
+            bne        _dontendfade
+            beq        _endfade
+
+_endfade:
+            move.l     #$10,titlepos
+            bra        _red
+
+_dontendfade:
+            move.l     titlepos,d3
+            addq.b     #$4,d3 
+            move.l     d3,titlepos
+            bra        _red
+
+;fade the title screen OUT
+fadeout:
+
+            move.l     titlepos,d3
+            cmpi.b     #$0,d3
+            bne        _hasntfaded
+            beq        _hasfaded
+_hasfaded:
+            move.l     #$0,titlepos
+            bra        _red
+
+_hasntfaded:
+            move.l     titlepos,d3
+            subq.b     #$4,d3
+            move.l     d3,titlepos
+
+
+; Handles horizontal scrolling of copperbar
 _red:
             move.l     redpos,d3
 
@@ -243,21 +429,32 @@ _red:
             cmpi.b     #$30,d3
             blo        _green  
 
-
             subq.b     #$2,d3                       ; subtract 2, scroll horizontally from right
             swap       d3
             move.l     d3,redpos
 
 
 _green:
+            ; test if its time to come on screen yet
             move.l     frame,d1
             cmp.l      #$c8,d1
             blo        cop
+
+            ;test if we need to move greenbar to the end 
+            move.b     backflag,d2
+            cmpi.b     #$ff,d2
+            beq        green_totheend  
 
             move.l     greenpos,d3                  ; change hpos for green
 
             swap       d3
             cmpi.b     #GREENEND,d3
+            blo        _blue
+
+green_totheend:
+            move.l     greenpos,d3
+            swap       d3
+            cmpi.b     #$30,d3
             blo        _blue
 
 
@@ -271,13 +468,22 @@ _blue:
             cmp.l      #$12c,d1
             blo        cop
 
-           
+            cmpi.b     #$ff,d2
+            beq        blue_totheend
+
+
             move.l     bluepos,d3                   ; change hpos for blue 
       
             swap       d3
             cmpi.b     #BLUEEND,d3
             blo        cop
       
+blue_totheend:
+            move.l     bluepos,d3
+            swap       d3
+            cmpi.b     #$30,d3
+            blo        cop
+
             subq.l     #$2,d3
             swap       d3
             move.l     d3,bluepos
@@ -443,16 +649,18 @@ _updateloop:
 
             rts
 
-;CONVERTS FROM HSV to RGB Colorspace - transitions.
-;Cut down for only grayscale?
-;pre-compute?
-; PARAMETERS:
-; h
-; s
-; v
-; *r (RED pointer - 8 bits per channel)
-; *g (GREEN pointer)
-; *b (BLUE pointer)
+;BITPLANE ZERO
+; TODO:
+; Rewrite for any bitplane(s).
+;consumes d0 as bitplane pointer
+pushplane:
+            move.w     #$00e2,(a6)+
+            move.w     d0,(a6)+
+            swap       d0
+            move.w     #$00e0,(a6)+
+            move.w     d0,(a6)+ 
+            
+            rts
 
 
 
@@ -494,8 +702,30 @@ barstorage:
 
 gfxname:    dc.b       'graphics.library',0
 
+            CNOP       0,4
 
+backflag:
+            dc.b       0
+
+            CNOP       0,4
             Section    ChipRAM,Data_c
+
+titletransition:
+            dc.l       $01820022
+            dc.l       $01820155
+            dc.l       $01820488
+            dc.l       $018208bb
+            dc.l       $01820dee
+            CNOP       0,4
+
+titlepos:
+            dc.l       0
+
+            CNOP       0,4
+
+title:
+            incbin     "title.raw",74
+            ;blk.b      320/8*3*(200-160),0
 
             CNOP       0,2
 
@@ -503,6 +733,13 @@ gfxname:    dc.b       'graphics.library',0
             include    "cat.i"
 
             CNOP       0,4
+
+montage_p1:
+            incbin     "m1_pf1.raw",$74
+            ;blk.b      320/8*3(200-160),0
+
+            CNOP       0,4
+
 plane:
             blk.l      $1999,0
 
