@@ -1,8 +1,8 @@
+;------------------------------------------
+;WALK SPRITES
+;------------------------------------------
+;Contains sprite structures and animation list for walking animation
        Section    ChipRAM,Data_c
-
-            ;SPRITES
-; Worth putting in include file? Gigantic...
-;Frame1
 f1_0:
        dc.w       $6d40
        dc.w       $c300
