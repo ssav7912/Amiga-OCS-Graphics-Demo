@@ -37,10 +37,10 @@ BLUEEND    EQU $96
 TITLESTART EQU 800                                                             ; frame counter
 TITLEEND   EQU TITLESTART+300
 PLANESTART EQU TITLEEND+300
-HEARTTRANS EQU PLANESTART+3850                                                  ; 3800
-HEARTSTART EQU HEARTTRANS+450                                                 ;reminder fix to 3800
-HAMTRANS   EQU HEARTSTART+450
-HAMSTART   EQU HAMTRANS+500                                            
+HEARTTRANS EQU PLANESTART+3850                                                 ; 3800
+HEARTSTART EQU HEARTTRANS+450                                                  ;reminder fix to 3800
+HAMTRANS   EQU HEARTSTART+350
+HAMSTART   EQU HAMTRANS+50                                         
 
 
 
@@ -157,8 +157,11 @@ mainloop:
                    cmp.l             #TITLESTART,d1
                    bls               bunk
 
-                   cmp.l             #HAMTRANS,d1
+                   cmp.l             #HAMSTART,d1
                    bhi               HAMplanes
+
+                   cmp.l             #HAMTRANS,d1
+                   bhi               prebunk
 
                    cmp.l             #HEARTSTART,d1
                    bhi               heartbeat
@@ -298,6 +301,7 @@ plane1:
 HAMplanes:
                    move.w            #$6a00,BPLCON0
                    move.w            #$0000,BPLCON1
+                   move.w            #$0000,BPLCON2
                    move.w            #$00c8,BPL1MOD
                    move.w            #$00c8,BPL2MOD
                    move.w            #$2c81,DIWSTRT
@@ -349,34 +353,37 @@ HAMplanes:
                    move.w            d0,(a6)+
 
 
+                   lea.l          plane_palette_4,a3   
+
+  
              ; transition in the palettes every 8 frames
-                   lea.l             transitionpointer,a2
-                   move.l            (a2),a2
+;                    lea.l             transitionpointer,a2
+;                    move.l            (a2),a2
 
-                   and.l             #$8-1,d1
-                   tst.b             d1
-                   bne               .noupdate
+;                    and.l             #$8-1,d1
+;                    tst.b             d1
+;                    bne               .noupdate
 
-                   cmp.l             #$fffffffe,(a2)
-                   beq               .endlist       
+;                    cmp.l             #$fffffffe,(a2)
+;                    beq               .endlist       
              
-                   move.l            (a2)+,a3
-                   move.l            a2,transitionpointer
-                   bra               .push
+;                    move.l            (a2)+,a3
+;                    move.l            a2,transitionpointer
+;                    bra               .push
 
-.endlist     
-                   lea.l             plane_palette_4,a3
+; .endlist     
+;                    lea.l             plane_palette_4,a3
 
-.noupdate
-                   move.l            (a2),a3
-                   move.l            a2,transitionpointer
+; .noupdate
+;                    move.l            (a2),a3
+;                    move.l            a2,transitionpointer
 
 .push
                    pushHAMpalette
 
                    move.l            #$fffffffe,(a6)+
 
-                   bra               bars
+                   bra               endbars
 
 
 heartbeat:
@@ -390,11 +397,42 @@ prebunk:
                    move.w            #$0000,BPL2MOD
                    move.w            #$0038,DDFSTRT
 
-                   
+                   cmp.l             #HAMTRANS,frame
+                   bhi               hamtransition
+
                    cmp.b             #$10,endpos
                    blo               bunk
 
                    sub.b             #$2,endpos
+                   bra               bunk
+
+hamtransition:
+                   breakpoint
+                   move.l            frame,d1
+
+                   move.l            hampos,d2
+                   cmpi.b            #$14,d2
+                   beq               hambunk
+
+
+
+                   lea.l             titletransition,a3
+                   move.l            (a3,d2),d3
+                   swap              d3
+                   subq.w            #$2,d3
+                   swap              d3
+                   move.l            d3,(a6)+
+
+
+                   and.l             #$8-1,d1
+                   tst.b             d1
+                   bne               hambunk
+
+                   add.l             #$4,hampos
+hambunk:
+                   move.l            #plane,d0
+                   jsr               pushplane
+                   bra               endbars
 
 
 bunk:
@@ -424,7 +462,7 @@ pushpalettes:
                    bhi               bars
 
             ;tests if sprite should start moving again
-                   cmpi.l            #TITLEEND+30,d1
+                   cmp.l             #TITLEEND+30,frame
                    bhi               walk
             
             ; test if spritepos = middle. (64+96/4 bc offset is from back of smudge) Better way to start/stop?
@@ -856,7 +894,7 @@ _loop:
 
                    swap              d3                                        ;swap waitpos to fffe[xxxx]
                    move.l            d3,d5                
-                   move.b            endpos,d5                                   ;d5 stores the endpos
+                   move.b            endpos,d5                                 ;d5 stores the endpos
                    swap              d5                                        ;swap back around to [xxff]fffe
 
                    move.l            d5,(a6)+
@@ -938,7 +976,7 @@ _spriteloop:
 ; consumes d0 as newpos word of format $VVHH
 ; consumes a3 as pointer to spritestruct
 ; consumes a2 as pointer to spritestruct
-; Loops through struct until it sees end-words: $fffffffe
+; Loops through struct until it sees end-words: $fffffffe - broken?
 updatesprite:
                    move.w            spritepos,d0
 
@@ -972,7 +1010,7 @@ pushplane:
 heartplane:
                    move.w            #$4600,BPLCON0
                    move.w            #$0000,BPLCON1
-                   move.w            #$0020,BPLCON2
+                   move.w            #$0000,BPLCON2
                    move.w            #$0000,BPL1MOD
                    move.w            #$0028,BPL2MOD
                    move.w            #$0038,DDFSTRT
@@ -1015,7 +1053,6 @@ heartplane:
                    move.l            (a4),a4
 
 .bckgroundpush
-                   breakpoint
                    move.l            a4,backplanepointer
 
                    pushPlane         (a4), #$00e4, #$00e6                      ;background bitplanes into EVEN registers (2, 4)
@@ -1114,6 +1151,7 @@ titletransition:
                    CNOP              0,4
 
 titlepos:          dc.l              0
+hampos:            dc.l              0
 
                    CNOP              0,4
 
