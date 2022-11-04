@@ -1,6 +1,20 @@
 import sys
 import glob
 
+'''
+Wasn't satisfied with vasms macro capabilities for what I needed to do. This just generates code for the data structures
+that the Blitter chip expects for each frame for each tile in the overall sit-sprite animation. It then creates an array of pointers
+to each frame:
+
+anim:
+|_frame1
+  |_f1_1
+  |_f1_2
+  ... etc
+|_frame2
+... etc
+'''
+
 inglob = sys.argv[1]
 count = 0
 
